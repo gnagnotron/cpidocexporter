@@ -37,6 +37,7 @@ function resolveServiceKeyCredentials(raw, sourceLabel = "service key") {
     raw.baseUrl ||
     raw.cpiUrl ||
     raw.cpi_base_url ||
+    uaa.url ||
     (raw.endpoints && (raw.endpoints.cpi || raw.endpoints.runtime || raw.endpoints.integrationFlow));
 
   if (!tokenUrl || !clientId || !clientSecret) {
