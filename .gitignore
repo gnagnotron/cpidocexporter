@@ -1,0 +1,8 @@
+node_modules/
+.env
+service-key.json
+output/*.html
+output/latest.json
+output/last-good.json
+logs/
+tmp-iflow.zip

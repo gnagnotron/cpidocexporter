@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: sap-cpi-doc-automation
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run start:web
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20

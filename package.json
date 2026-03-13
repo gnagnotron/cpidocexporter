@@ -1,0 +1,21 @@
+{
+  "name": "sap-cpi-doc-automation",
+  "version": "1.0.0",
+  "description": "Automated SAP CPI iFlow documentation generator",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "generate": "node src/index.js",
+    "generate:once": "node src/index.js --once",
+    "validate": "node src/index.js --validate-config",
+    "start:web": "node src/web/server.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "axios": "^1.8.4",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "fast-xml-parser": "^5.5.5",
+    "node-cron": "^3.0.3"
+  }
+}

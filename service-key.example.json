@@ -1,0 +1,7 @@
+{
+  "comment": "Esempio struttura 1 - formato flat (OAuth2 Client Credentials, Cloud Integration Process Integration Suite)",
+  "url": "https://<tenant>.it-cpi-n.hana.ondemand.com",
+  "tokenurl": "https://<subdomain>.authentication.<region>.hana.ondemand.com/oauth/token",
+  "clientid": "sb-<service-instance-id>!b<number>|it-rt-<tenant>!b<number>",
+  "clientsecret": "<secret>"
+}
