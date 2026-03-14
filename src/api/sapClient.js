@@ -389,6 +389,37 @@ function inferDirection(props, sourceParticipant, targetParticipant) {
   return "";
 }
 
+function buildEndpointFromProperties(props) {
+  const base = firstNonEmpty([
+    props.httpAddressWithoutQuery,
+    props.addressWithoutQuery,
+    props.HttpAddressWithoutQuery
+  ]);
+  const query = firstNonEmpty([
+    props.httpAddressQuery,
+    props.addressQuery,
+    props.HttpAddressQuery
+  ]);
+
+  if (base && query) {
+    const hasQueryPrefix = query.startsWith("?");
+    return `${base}${hasQueryPrefix ? "" : "?"}${query}`;
+  }
+
+  return firstNonEmpty([
+    base,
+    props.urlPath,
+    props.address,
+    props.httpAddress,
+    props.QueueName_inbound,
+    props.QueueName_outbound,
+    props.queueName,
+    props.queue,
+    props.host,
+    props.url
+  ]);
+}
+
 function buildAdapterFromMessageFlow(flow, participantMap) {
   const props = mapExtensionProperties(flow);
   const sourceParticipant = participantMap.get(flow["@_sourceRef"]);
@@ -406,16 +437,7 @@ function buildAdapterFromMessageFlow(flow, participantMap) {
     name: firstNonEmpty([flow["@_name"], props.Name, flow["@_id"]]),
     direction: inferDirection(props, sourceParticipant, targetParticipant),
     system: firstNonEmpty([props.system, sourceParticipant && sourceParticipant.name, targetParticipant && targetParticipant.name]),
-    endpoint: firstNonEmpty([
-      props.urlPath,
-      props.address,
-      props.QueueName_inbound,
-      props.QueueName_outbound,
-      props.queueName,
-      props.queue,
-      props.host,
-      props.url
-    ]),
+    endpoint: buildEndpointFromProperties(props),
     transport: props.TransportProtocol || "",
     messageProtocol: props.MessageProtocol || "",
     authMode: firstNonEmpty([
@@ -802,7 +824,12 @@ async function fetchIflowDetails(client, iflow, serviceEndpoints, runtimeById, c
   };
 }
 
-async function fetchAllIflows(config, metrics) {
+async function fetchAllIflows(config, metrics, onProgress) {
+  const reportProgress = typeof onProgress === "function"
+    ? onProgress
+    : () => {};
+
+  reportProgress({ percentage: 2, stage: "Initializing SAP client" });
   const clientOptions = {
     baseURL: config.sap.cpiBaseUrl,
     timeout: config.sap.timeoutMs,
@@ -816,9 +843,11 @@ async function fetchAllIflows(config, metrics) {
       username: config.sap.basicUsername,
       password: config.sap.basicPassword
     };
+    reportProgress({ percentage: 8, stage: "Authentication mode: Basic" });
   } else {
     const token = await getToken(config, metrics);
     clientOptions.headers.Authorization = `Bearer ${token}`;
+    reportProgress({ percentage: 8, stage: "OAuth token acquired" });
   }
 
   const client = axios.create(clientOptions);
@@ -826,16 +855,20 @@ async function fetchAllIflows(config, metrics) {
   const packages = await fetchPagedOData(client, "/api/v1/IntegrationPackages", config, metrics);
 
   logger.info("Fetched integration packages", { count: packages.length });
+  reportProgress({ percentage: 15, stage: `Fetched packages (${packages.length})` });
 
   const serviceEndpoints = await fetchPagedOData(client, "/api/v1/ServiceEndpoints", config, metrics);
   logger.info("Fetched service endpoints", { count: serviceEndpoints.length });
+  reportProgress({ percentage: 20, stage: `Fetched service endpoints (${serviceEndpoints.length})` });
 
   const runtimeArtifacts = await fetchPagedOData(client, "/api/v1/IntegrationRuntimeArtifacts", config, metrics);
   logger.info("Fetched runtime artifacts", { count: runtimeArtifacts.length });
+  reportProgress({ percentage: 25, stage: `Fetched runtime artifacts (${runtimeArtifacts.length})` });
   const runtimeById = new Map(runtimeArtifacts.map((rt) => [rt.Id, rt]));
 
   const iflows = [];
-  for (const pkg of packages) {
+  for (let pkgIndex = 0; pkgIndex < packages.length; pkgIndex += 1) {
+    const pkg = packages[pkgIndex];
     const pkgIflows = await fetchPagedOData(
       client,
       `/api/v1/IntegrationPackages('${encodeURIComponent(pkg.Id)}')/IntegrationDesigntimeArtifacts`,
@@ -843,12 +876,22 @@ async function fetchAllIflows(config, metrics) {
       metrics
     );
     iflows.push(...pkgIflows);
+
+    const packageProgress = packages.length > 0
+      ? Math.round(25 + (((pkgIndex + 1) / packages.length) * 20))
+      : 45;
+    reportProgress({
+      percentage: packageProgress,
+      stage: `Package scan ${pkgIndex + 1}/${packages.length}`
+    });
   }
 
   logger.info("Fetched iFlow catalog", { count: iflows.length });
+  reportProgress({ percentage: 45, stage: `Fetched iFlow catalog (${iflows.length})` });
 
   const enriched = [];
-  for (const iflow of iflows) {
+  for (let iflowIndex = 0; iflowIndex < iflows.length; iflowIndex += 1) {
+    const iflow = iflows[iflowIndex];
     try {
       const details = await fetchIflowDetails(client, iflow, serviceEndpoints, runtimeById, config, metrics);
       enriched.push({ ...iflow, ...details });
@@ -873,7 +916,19 @@ async function fetchAllIflows(config, metrics) {
         runtime: null
       });
     }
+
+    if ((iflowIndex + 1) % 3 === 0 || iflowIndex === iflows.length - 1) {
+      const detailsProgress = iflows.length > 0
+        ? Math.round(45 + (((iflowIndex + 1) / iflows.length) * 47))
+        : 92;
+      reportProgress({
+        percentage: detailsProgress,
+        stage: `iFlow details ${iflowIndex + 1}/${iflows.length}`
+      });
+    }
   }
+
+  reportProgress({ percentage: 92, stage: "All iFlow details collected" });
 
   return enriched;
 }
