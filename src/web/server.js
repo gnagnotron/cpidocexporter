@@ -116,6 +116,19 @@ function renderHomePage() {
       color: #9a3412;
       font-size: 0.85rem;
     }
+    .repo-link {
+      display: inline-flex;
+      margin-top: 0.45rem;
+      color: #0f766e;
+      font-weight: 700;
+      text-decoration: none;
+      border-bottom: 1px solid #99f6e4;
+      padding-bottom: 0.1rem;
+    }
+    .repo-link:hover {
+      color: #0d9488;
+      border-bottom-color: #5eead4;
+    }
     @media (max-width: 760px) {
       .row {
         grid-template-columns: 1fr;
@@ -129,22 +142,15 @@ function renderHomePage() {
       <h1>SAP CPI Docs Generator</h1>
       <p>Paste your SAP service key JSON and generate HTML documentation.</p>
       <p class="warn">Security note: service key is processed in memory and not persisted server-side.</p>
+      <a class="repo-link" href="https://github.com/gnagnotron/cpidocexporter" target="_blank" rel="noopener noreferrer">GitHub repository (feedback and issues)</a>
     </section>
 
     <section class="card">
       <label for="serviceKey">Service Key JSON</label>
       <textarea id="serviceKey" placeholder="Paste full service key JSON..."></textarea>
 
-      <div class="row">
-        <div>
-          <label for="cpiBaseUrl">CPI Base URL (optional override)</label>
-          <input id="cpiBaseUrl" placeholder="https://<tenant>/api/v1" />
-        </div>
-        <div>
-          <label for="fileInput">Or load from file</label>
-          <input id="fileInput" type="file" accept="application/json,.json" />
-        </div>
-      </div>
+      <label for="fileInput">Or load from file</label>
+      <input id="fileInput" type="file" accept="application/json,.json" />
 
       <div class="actions">
         <button id="generateBtn" type="button">Generate HTML</button>
@@ -157,7 +163,6 @@ function renderHomePage() {
   <script>
     (function () {
       const serviceKeyEl = document.getElementById('serviceKey');
-      const cpiBaseUrlEl = document.getElementById('cpiBaseUrl');
       const fileInputEl = document.getElementById('fileInput');
       const generateBtn = document.getElementById('generateBtn');
       const clearBtn = document.getElementById('clearBtn');
@@ -177,14 +182,12 @@ function renderHomePage() {
 
       clearBtn.addEventListener('click', function () {
         serviceKeyEl.value = '';
-        cpiBaseUrlEl.value = '';
         fileInputEl.value = '';
         statusEl.textContent = '';
       });
 
       generateBtn.addEventListener('click', async function () {
         const raw = serviceKeyEl.value.trim();
-        const override = cpiBaseUrlEl.value.trim();
 
         if (!raw) {
           statusEl.textContent = 'Please provide a service key JSON first.';
@@ -206,7 +209,7 @@ function renderHomePage() {
           const response = await fetch('/api/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ serviceKey: parsed, cpiBaseUrl: override || undefined })
+            body: JSON.stringify({ serviceKey: parsed })
           });
 
           if (!response.ok) {
@@ -259,9 +262,7 @@ app.get("/health", (_req, res) => {
 app.post("/api/generate", async (req, res) => {
   try {
     const serviceKey = parseServiceKeyBody(req.body);
-    const config = createConfigFromServiceKeyObject(serviceKey, {
-      cpiBaseUrl: req.body && req.body.cpiBaseUrl ? String(req.body.cpiBaseUrl) : ""
-    });
+    const config = createConfigFromServiceKeyObject(serviceKey);
 
     const metrics = createMetrics();
     const iflows = await fetchAllIflows(config, metrics);
