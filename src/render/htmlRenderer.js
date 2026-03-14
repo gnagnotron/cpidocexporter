@@ -17,14 +17,22 @@ function renderTable(headers, rows, options = {}) {
   const limit = Number.isFinite(options.limit) ? options.limit : null;
   const tableId = options.tableId || "";
   const emptyMessage = options.emptyMessage || "No records found.";
+  const sortable = options.sortable !== false;
+  const sortTypes = Array.isArray(options.sortTypes) ? options.sortTypes : [];
 
   if (!rows || rows.length === 0) {
     return `<p>${escapeHtml(emptyMessage)}</p>`;
   }
 
-  const head = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
+  const head = headers.map((header, index) => {
+    if (!sortable) {
+      return `<th>${escapeHtml(header)}</th>`;
+    }
+
+    return `<th><button type="button" class="table-sort-btn" data-sort-col="${index}" data-sort-type="${escapeHtml(sortTypes[index] || "auto")}">${escapeHtml(header)}</button></th>`;
+  }).join("");
   const body = rows
-    .map((row, index) => `<tr data-row="1" data-index="${index}">${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
+    .map((row, index) => `<tr data-row="1" data-index="${index}" data-original-index="${index}">${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
     .join("");
 
   const controls = limit && rows.length > limit
@@ -32,7 +40,7 @@ function renderTable(headers, rows, options = {}) {
     : "";
 
   return `
-    <div class="table-shell" ${tableId ? `id="${escapeHtml(tableId)}"` : ""} ${limit ? `data-limit="${limit}"` : ""}>
+    <div class="table-shell" ${tableId ? `id="${escapeHtml(tableId)}"` : ""} ${limit ? `data-limit="${limit}"` : ""} ${sortable ? 'data-sort-enabled="1"' : ""}>
       <div class="table-wrap">
         <table>
           <thead><tr>${head}</tr></thead>
@@ -193,16 +201,16 @@ function renderHubCard(hub) {
 function buildFlagBadges(flags) {
   const badges = [];
   if (flags.hasBasicAuth) {
-    badges.push({ className: "badge-basic", label: "Basic" });
+    badges.push({ className: "badge-basic", label: "Basic Authentication" });
   }
   if (flags.hasSapCloudConnector) {
-    badges.push({ className: "badge-sapcc", label: "sapcc" });
+    badges.push({ className: "badge-sapcc", label: "SAP Cloud Connector" });
   }
   if (flags.hasCredentialRefs) {
-    badges.push({ className: "badge-cred", label: "CredentialRef" });
+    badges.push({ className: "badge-cred", label: "Security Material Alias" });
   }
   if (flags.hasSecureParameters) {
-    badges.push({ className: "badge-secure", label: "SecureParam" });
+    badges.push({ className: "badge-secure", label: "Secure Externalized Parameter" });
   }
   return badges;
 }
@@ -215,14 +223,45 @@ function renderBadges(flags) {
   return `<div class="badges">${badges.map((badge) => `<span class="badge ${badge.className}">${escapeHtml(badge.label)}</span>`).join("")}</div>`;
 }
 
+function renderSectionMenu(title, items) {
+  return `
+    <section class="card section-index-card">
+      <h2>${escapeHtml(title)}</h2>
+      <div class="section-index-links">
+        ${items.map((item) => `
+          <a class="section-jump-link" href="#${escapeHtml(item.id)}" data-open-tab="${escapeHtml(item.tab)}">
+            <span>${escapeHtml(item.label)}</span>
+            <small>${escapeHtml(item.description || "Open section")}</small>
+          </a>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderCollapsibleSection(id, title, description, body, options = {}) {
+  return `
+    <section class="card explorer-section" id="${escapeHtml(id)}">
+      <details class="explorer-details" ${options.open ? "open" : ""}>
+        <summary>
+          <span>${escapeHtml(title)}</span>
+          <small>${escapeHtml(description || "Open section")}</small>
+        </summary>
+        <div class="explorer-body">${body}</div>
+      </details>
+    </section>
+  `;
+}
+
 function renderFilterControls(model) {
   const packages = Array.from(new Set((model.integrations || []).map((item) => item.packageName || item.packageId).filter(Boolean))).sort();
   const iflows = (model.integrations || []).map((item) => item.name || item.id).sort((a, b) => a.localeCompare(b));
+  const total = (model.integrations || []).length;
 
   return `
     <section class="card" id="filters-card">
-      <h2>Filters</h2>
-      <p>Use these filters to focus on one flow, one package, or a specific term.</p>
+      <h2>Global Filters</h2>
+      <p>These filters are global and affect which iFlows are shown in the iFlow Catalog (Internals tab).</p>
       <div class="filters-grid">
         <label>
           Search
@@ -247,6 +286,11 @@ function renderFilterControls(model) {
           <span id="filter-count"></span>
         </div>
       </div>
+      <div class="filter-impact">
+        <p id="filter-scope-text">No active filter. Showing all ${total} iFlows in catalog.</p>
+        <div id="active-filter-list" class="active-filter-list"></div>
+        <button id="open-catalog-from-filter" type="button">Open iFlow Catalog With Current Filters</button>
+      </div>
     </section>
   `;
 }
@@ -255,14 +299,14 @@ function renderTopicMenu() {
   return `
     <section class="card" id="topic-menu">
       <h2>Documentation Menu</h2>
-      <p>Select the topic you want to inspect.</p>
+      <p>Choose where to go next.</p>
       <div class="topic-grid">
-        <a class="topic-link" href="#topic-explorer" data-open-tab="tab-overview">Guided Search</a>
-        <a class="topic-link" href="#inter-iflow-section" data-open-tab="tab-connectivity">Inter-iFlow Links</a>
-        <a class="topic-link" href="#hubs-section" data-open-tab="tab-connectivity">Connection Topologies</a>
-        <a class="topic-link" href="#adapter-inventory-section" data-open-tab="tab-security">Adapters & Security</a>
-        <a class="topic-link" href="#dependency-section" data-open-tab="tab-internals">Dependencies</a>
-        <a class="topic-link" href="#iflow-catalog" data-open-tab="tab-internals">iFlow Catalog</a>
+        <a class="topic-link" href="#topic-explorer" data-open-tab="tab-overview"><span>Guided Search</span><small>Find iFlows by topic and value</small></a>
+        <a class="topic-link" href="#inter-iflow-section" data-open-tab="tab-connectivity"><span>Inter-iFlow Links</span><small>Producer and consumer links</small></a>
+        <a class="topic-link" href="#hubs-section" data-open-tab="tab-connectivity"><span>Connection Topologies</span><small>Shared endpoints and hubs</small></a>
+        <a class="topic-link" href="#adapter-inventory-section" data-open-tab="tab-security"><span>Adapters & Security</span><small>Inventory and risk flags</small></a>
+        <a class="topic-link" href="#dependency-section" data-open-tab="tab-internals"><span>Dependencies</span><small>Artifact dependency map</small></a>
+        <a class="topic-link" href="#iflow-catalog" data-open-tab="tab-internals"><span>iFlow Catalog</span><small>Detailed per-iFlow analysis</small></a>
       </div>
     </section>
   `;
@@ -408,17 +452,28 @@ function renderCatalogFilters(model) {
   const packages = (model.integrations || []).map((entry) => entry.packageName || entry.packageId).filter(Boolean);
   const iflows = (model.integrations || []).map((entry) => entry.name || entry.id).filter(Boolean);
   return `
-    <div class="section-filters" id="catalog-filters">
-      <label>
-        <span>iFlow</span>
-        <select id="catalog-filter-iflow">${renderOptions(iflows, "All iFlows")}</select>
-      </label>
-      <label>
-        <span>Package</span>
-        <select id="catalog-filter-package">${renderOptions(packages, "All packages")}</select>
-      </label>
-      <button type="button" id="catalog-filter-reset">Reset</button>
-      <div class="filters-actions"><span id="catalog-filter-count"></span></div>
+    <div class="catalog-toolbar">
+      <div>
+        <h3>iFlow Catalog</h3>
+        <p>Compact cards with quick technical signals. Open only the flows you want to inspect in depth.</p>
+      </div>
+      <div class="section-filters" id="catalog-filters">
+        <label>
+          <span>iFlow</span>
+          <select id="catalog-filter-iflow">${renderOptions(iflows, "All iFlows")}</select>
+        </label>
+        <label>
+          <span>Package</span>
+          <select id="catalog-filter-package">${renderOptions(packages, "All packages")}</select>
+        </label>
+        <button type="button" id="catalog-filter-reset">Reset</button>
+        <div class="filters-actions"><span id="catalog-filter-count"></span></div>
+      </div>
+      <div class="catalog-pagination" id="catalog-pagination">
+        <button type="button" id="catalog-page-prev">Previous 5</button>
+        <span id="catalog-page-info">Page 1/1</span>
+        <button type="button" id="catalog-page-next">Next 5</button>
+      </div>
     </div>
   `;
 }
@@ -429,8 +484,42 @@ function renderSummary(model) {
   const withConfigs = model.integrations.filter((item) => item.configurations && item.configurations.length > 0).length;
   const withResources = model.integrations.filter((item) => item.resources && item.resources.length > 0).length;
   const withRuntime = model.integrations.filter((item) => item.runtime).length;
+  const withSecureParams = model.integrations.filter((item) => item.flags && item.flags.hasSecureParameters).length;
+  const withInternalSteps = model.integrations.filter((item) => item.internalSteps && item.internalSteps.length > 0).length;
+  const withDependencies = model.integrations.filter((item) => item.dependencies && item.dependencies.length > 0).length;
+  const linkedFlowIds = new Set((model.interIflowLinks || []).flatMap((link) => [link.from, link.to]).filter(Boolean));
+  const withLinks = linkedFlowIds.size;
+
+  const topStats = [
+    { value: s.totalIflows, label: "Total iFlows", filterKey: "all" },
+    { value: withAdapters, label: "With Adapters", filterKey: "hasAdapters" },
+    { value: withLinks, label: "With Inter-iFlow Links", filterKey: "hasLinks" },
+    { value: withRuntime, label: "With Runtime Artifact", filterKey: "hasRuntime" }
+  ];
+
+  const detailStats = [
+    { value: withDependencies, label: "With Dependencies", filterKey: "hasDependencies" },
+    { value: withConfigs, label: "With Config Params", filterKey: "hasConfigs" },
+    { value: withResources, label: "With Resources", filterKey: "hasResources" },
+    { value: s.withErrorFlow, label: "With Error Flow", filterKey: "hasErrorFlow" },
+    { value: s.withCredentialRefs || 0, label: "With Credential Refs", filterKey: "hasCredentialRefs" },
+    { value: s.withBasicAuth || 0, label: "With Basic", filterKey: "hasBasicAuth" },
+    { value: s.withSapCloudConnector || 0, label: "With sapcc", filterKey: "hasSapcc" },
+    { value: withSecureParams, label: "With Secure Params", filterKey: "hasSecureParameters" },
+    { value: withInternalSteps, label: "With Internal Steps", filterKey: "hasInternalSteps" }
+  ];
+
   return `
-    <section class="card">\n      <h2>Summary</h2>\n      <div class="summary-grid">\n        <div><strong>${s.totalIflows}</strong><span>Total iFlow</span></div>\n        <div><strong>${s.totalDependencies}</strong><span>Total Dependencies</span></div>\n        <div><strong>${s.withErrorFlow}</strong><span>With Error Flow</span></div>\n        <div><strong>${withAdapters}</strong><span>With Adapters</span></div>\n        <div><strong>${withRuntime}</strong><span>With Runtime Artifact</span></div>\n        <div><strong>${withConfigs}</strong><span>With Config Params</span></div>\n        <div><strong>${withResources}</strong><span>With Resources</span></div>\n        <div><strong>${s.withCredentialRefs || 0}</strong><span>With Credential Refs</span></div>\n        <div><strong>${s.withBasicAuth || 0}</strong><span>With Basic</span></div>\n        <div><strong>${s.withSapCloudConnector || 0}</strong><span>With sapcc</span></div>\n        <div><strong>${s.interIflowLinks || 0}</strong><span>Inter-iFlow Links</span></div>\n        <div><strong>${s.oneToManyHubs || 0}</strong><span>One-to-Many Hubs</span></div>\n        <div><strong>${s.manyToOneHubs || 0}</strong><span>Many-to-One Hubs</span></div>\n      </div>\n    </section>
+    <section class="card summary-card">
+      <h2>Overview Dashboard</h2>
+      <p class="summary-subtitle">Quick snapshot of integration coverage and technical risk hotspots.</p>
+      <div class="summary-hero-grid">
+        ${topStats.map((item) => `<button type="button" class="summary-hero-item summary-filter-trigger" data-summary-filter="${escapeHtml(item.filterKey)}" data-summary-label="${escapeHtml(item.label)}"><strong>${item.value}</strong><span>${escapeHtml(item.label)}</span></button>`).join("")}
+      </div>
+      <div class="summary-metrics-grid">
+        ${detailStats.map((item) => `<button type="button" class="summary-metric-item summary-filter-trigger" data-summary-filter="${escapeHtml(item.filterKey)}" data-summary-label="${escapeHtml(item.label)}"><span>${escapeHtml(item.label)}</span><strong>${item.value}</strong></button>`).join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -514,14 +603,89 @@ function renderRelatedLinks(model, integration) {
   );
 }
 
-function buildFlowOverview(integration) {
-  const receivers = integration.adapters.filter((adapter) => /receiver/i.test(adapter.direction || ""));
-  const senders = integration.adapters.filter((adapter) => /sender/i.test(adapter.direction || ""));
+function summarizeAdapters(adapters) {
+  const grouped = new Map();
+  (Array.isArray(adapters) ? adapters : []).forEach((adapter) => {
+    const direction = adapter.direction || "Unknown";
+    const type = adapter.type || "Unknown";
+    const key = `${direction}||${type}`;
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        direction,
+        type,
+        count: 0,
+        endpoints: new Set()
+      });
+    }
+
+    const entry = grouped.get(key);
+    entry.count += 1;
+    if (adapter.endpoint) {
+      entry.endpoints.add(adapter.endpoint);
+    }
+  });
+
+  return Array.from(grouped.values())
+    .map((entry) => ({
+      direction: entry.direction,
+      type: entry.type,
+      count: entry.count,
+      endpointCount: entry.endpoints.size
+    }))
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+      return `${left.direction} ${left.type}`.localeCompare(`${right.direction} ${right.type}`);
+    });
+}
+
+function buildFlowOverview(model, integration) {
+  const links = Array.isArray(model.interIflowLinks) ? model.interIflowLinks : [];
+  const inboundLinkedEndpoints = new Set(
+    links.filter((link) => link.to === integration.id).map((link) => link.endpoint).filter(Boolean)
+  );
+  const outboundLinkedEndpoints = new Set(
+    links.filter((link) => link.from === integration.id).map((link) => link.endpoint).filter(Boolean)
+  );
+
+  const inboundEndpoints = new Set();
+  const outboundEndpoints = new Set();
+
+  (integration.adapters || []).forEach((adapter) => {
+    const endpoint = adapter.endpoint;
+    if (!endpoint) {
+      return;
+    }
+
+    const linkedInbound = inboundLinkedEndpoints.has(endpoint);
+    const linkedOutbound = outboundLinkedEndpoints.has(endpoint);
+
+    if (linkedInbound && !linkedOutbound) {
+      inboundEndpoints.add(endpoint);
+      return;
+    }
+
+    if (linkedOutbound && !linkedInbound) {
+      outboundEndpoints.add(endpoint);
+      return;
+    }
+
+    // Fallback when no explicit inter-iFlow relation is inferred.
+    if (/sender/i.test(adapter.direction || "")) {
+      inboundEndpoints.add(endpoint);
+    } else if (/receiver/i.test(adapter.direction || "")) {
+      outboundEndpoints.add(endpoint);
+    }
+  });
+
   return {
-    inputCount: receivers.length,
-    outputCount: senders.length,
-    inputEndpoints: receivers.map((adapter) => adapter.endpoint).filter(Boolean),
-    outputEndpoints: senders.map((adapter) => adapter.endpoint).filter(Boolean),
+    inputCount: inboundEndpoints.size,
+    outputCount: outboundEndpoints.size,
+    inputEndpoints: Array.from(inboundEndpoints),
+    outputEndpoints: Array.from(outboundEndpoints),
+    adapterGroups: summarizeAdapters(integration.adapters),
     internalStepCount: integration.internalSteps.length
   };
 }
@@ -555,7 +719,10 @@ function buildSearchIndex(integration) {
 function renderIntegrations(model) {
   return model.integrations
     .map((integration) => {
-      const overview = buildFlowOverview(integration);
+      const overview = buildFlowOverview(model, integration);
+      const relatedLinks = (Array.isArray(model.interIflowLinks) ? model.interIflowLinks : []).filter(
+        (link) => link.from === integration.id || link.to === integration.id
+      );
       const adapters = renderTable(
         ["Direction", "Type", "Name", "System", "Endpoint", "Auth", "Credential Refs"],
         integration.adapters.map((adapter) => [
@@ -649,9 +816,12 @@ function renderIntegrations(model) {
 
       const packageName = integration.packageName || integration.packageId || "";
       const searchIndex = buildSearchIndex(integration);
-      const topAdapters = integration.adapters.slice(0, 8);
-      const topInputs = overview.inputEndpoints.slice(0, 6);
-      const topOutputs = overview.outputEndpoints.slice(0, 6);
+      const topAdapters = overview.adapterGroups.slice(0, 4).map((group) => {
+        const endpointSuffix = group.endpointCount > 0 ? ` • ${group.endpointCount} ep` : "";
+        return `${group.direction} - ${group.type} x${group.count}${endpointSuffix}`;
+      });
+      const topInputs = overview.inputEndpoints.slice(0, 3);
+      const topOutputs = overview.outputEndpoints.slice(0, 3);
       const runtimeStatus = integration.runtime ? integration.runtime.status || "Deployed" : "Not deployed";
       const detailSections = [
         { title: "Endpoints & Adapters", content: adapters, open: true },
@@ -671,8 +841,77 @@ function renderIntegrations(model) {
         { title: "Dependencies", content: dependencies, open: false }
       ];
 
+      const dataFlags = {
+        hasAdapters: integration.adapters.length > 0,
+        hasConfigs: integration.configurations.length > 0,
+        hasResources: integration.resources.length > 0,
+        hasRuntime: Boolean(integration.runtime),
+        hasErrorFlow: Boolean(integration.errorHandling && integration.errorHandling.hasErrorFlow),
+        hasCredentialRefs: Boolean(integration.flags && integration.flags.hasCredentialRefs),
+        hasBasicAuth: Boolean(integration.flags && integration.flags.hasBasicAuth),
+        hasSapcc: Boolean(integration.flags && integration.flags.hasSapCloudConnector),
+        hasSecureParameters: Boolean(integration.flags && integration.flags.hasSecureParameters),
+        hasInternalSteps: integration.internalSteps.length > 0,
+        hasDependencies: integration.dependencies.length > 0,
+        hasLinks: relatedLinks.length > 0
+      };
+      const dataAttributes = Object.entries(dataFlags)
+        .map(([key, value]) => 'data-flag-' + escapeHtml(key) + '="' + (value ? '1' : '0') + '"')
+        .join(" ");
+
       return `
-      <section class="${cardClasses.join(" ")}" id="iflow-${escapeHtml(integration.id)}" data-iflow="${escapeHtml(integration.name || integration.id)}" data-package="${escapeHtml(packageName)}" data-search="${escapeHtml(searchIndex)}">\n        <div class="integration-hero">\n          <div class="integration-title-wrap">\n            <div class="integration-kicker">${escapeHtml(packageName || "No package")}</div>\n            <h3>${escapeHtml(integration.name)} <small>${escapeHtml(integration.version)}</small></h3>\n            <p class="integration-meta-line"><strong>ID:</strong> ${escapeHtml(integration.id)} <span class="meta-separator">|</span> <strong>Runtime:</strong> ${escapeHtml(runtimeStatus)} <span class="meta-separator">|</span> <strong>Deployed By:</strong> ${escapeHtml(integration.deployedBy || "Unknown")}</p>\n          </div>\n          <div class="integration-side">\n            ${renderBadges(integration.flags)}\n            <p class="muted-inline"><strong>Modified:</strong> ${escapeHtml(integration.modifiedAt || "Unknown")}</p>\n          </div>\n        </div>\n        <div class="integration-summary-grid">\n          <div class="summary-pill"><strong>${overview.inputCount}</strong><span>Inputs</span></div>\n          <div class="summary-pill"><strong>${overview.outputCount}</strong><span>Outputs</span></div>\n          <div class="summary-pill"><strong>${overview.internalStepCount}</strong><span>Internal Steps</span></div>\n          <div class="summary-pill"><strong>${integration.dependencies.length}</strong><span>Dependencies</span></div>\n        </div>\n        <div class="integration-quick-grid">\n          <div class="quick-panel">\n            <h4>Input Endpoints</h4>\n            ${renderMiniChips(topInputs, "No input endpoints")}\n          </div>\n          <div class="quick-panel">\n            <h4>Output Endpoints</h4>\n            ${renderMiniChips(topOutputs, "No output endpoints")}\n          </div>\n          <div class="quick-panel">\n            <h4>Main Adapters</h4>\n            ${renderMiniChips(topAdapters, "No adapters found")}\n          </div>\n        </div>\n        <div class="integration-detail-stack">\n          ${detailSections.map((section) => `\n            <details ${section.open ? "open" : ""} class="detail-block">\n              <summary>${section.title}</summary>\n              <div class="detail-body">${section.content}</div>\n            </details>\n          `).join("")}\n        </div>\n      </section>
+      <details class="${cardClasses.join(" ")}" id="iflow-${escapeHtml(integration.id)}" data-iflow="${escapeHtml(integration.name || integration.id)}" data-package="${escapeHtml(packageName)}" data-search="${escapeHtml(searchIndex)}" ${dataAttributes}>
+        <summary class="integration-card-summary">
+          <div class="integration-hero">
+            <div class="integration-title-wrap">
+              <div class="integration-kicker">${escapeHtml(packageName || "No package")}</div>
+              <h3>${escapeHtml(integration.name)}</h3>
+              <div class="integration-meta-grid">
+                <p><span>Status</span><strong>${escapeHtml(runtimeStatus)}</strong></p>
+                <p><span>Version</span><strong>${escapeHtml(integration.version || "n/a")}</strong></p>
+                <p><span>ID</span><strong>${escapeHtml(integration.id)}</strong></p>
+                <p><span>Modified</span><strong>${escapeHtml(integration.modifiedAt || "Unknown")}</strong></p>
+              </div>
+            </div>
+            <div class="integration-side">
+              <button type="button" class="card-expand-btn" aria-expanded="false">Expand card</button>
+              <p class="flag-caption">Security & Platform Signals</p>
+              ${renderBadges(integration.flags)}
+              <p class="muted-inline"><strong>Inter-iFlow links:</strong> ${relatedLinks.length}</p>
+            </div>
+          </div>
+          <div class="integration-summary-grid integration-summary-grid-compact">
+            <div class="summary-pill"><strong>${overview.inputCount}</strong><span>Inbound Endpoints</span></div>
+            <div class="summary-pill"><strong>${overview.outputCount}</strong><span>Outbound Endpoints</span></div>
+            <div class="summary-pill"><strong>${overview.internalStepCount}</strong><span>Steps</span></div>
+            <div class="summary-pill"><strong>${integration.dependencies.length}</strong><span>Deps</span></div>
+          </div>
+          <div class="integration-preview-table" role="group" aria-label="Collapsed iFlow preview details">
+            <div class="integration-preview-row">
+              <span class="integration-preview-key">Adapter Groups</span>
+              <div class="integration-preview-value">${renderMiniChips(topAdapters, "No adapters")}</div>
+            </div>
+            <div class="integration-preview-row">
+              <span class="integration-preview-key">Inbound Endpoints</span>
+              <div class="integration-preview-value">${renderMiniChips(topInputs, "No inbound endpoint inferred")}</div>
+            </div>
+            <div class="integration-preview-row">
+              <span class="integration-preview-key">Outbound Endpoints</span>
+              <div class="integration-preview-value">${renderMiniChips(topOutputs, "No outbound endpoint inferred")}</div>
+            </div>
+          </div>
+        </summary>
+        <div class="integration-expanded">
+          <div class="integration-detail-stack">
+            ${detailSections.map((section) => `
+              <details ${section.open ? "open" : ""} class="detail-block">
+                <summary>${section.title}</summary>
+                <div class="detail-body">${section.content}</div>
+              </details>
+            `).join("")}
+          </div>
+        </div>
+      </details>
       `;
     })
     .join("\n");
@@ -698,6 +937,10 @@ function renderClientScript() {
     (function () {
       const TOPIC_DATA = ${serializedTopicData};
       const topicSortState = { key: 'iflow', direction: 'asc' };
+      const CATALOG_PAGE_SIZE = 5;
+      let activeSummaryFilter = '';
+      let activeSummaryLabel = '';
+      let catalogPage = 1;
 
       function applyTableLimit(tableShell) {
         const table = tableShell.querySelector('table');
@@ -755,6 +998,139 @@ function renderClientScript() {
 
       function updateAllTables() {
         document.querySelectorAll('.table-shell').forEach(applyTableLimit);
+      }
+
+      function updateCardExpandButtons() {
+        document.querySelectorAll('details.integration').forEach(function (card) {
+          const button = card.querySelector('.card-expand-btn');
+          if (!button) {
+            return;
+          }
+          const expanded = card.hasAttribute('open');
+          button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+          button.textContent = expanded ? 'Collapse card' : 'Expand card';
+        });
+      }
+
+      function applyCatalogPagination() {
+        const cards = Array.from(document.querySelectorAll('.integration'));
+        const matchedCards = cards.filter(function (card) {
+          return card.getAttribute('data-filter-match') === '1';
+        });
+        const totalMatched = matchedCards.length;
+        const totalPages = Math.max(1, Math.ceil(totalMatched / CATALOG_PAGE_SIZE));
+
+        if (catalogPage > totalPages) {
+          catalogPage = totalPages;
+        }
+        if (catalogPage < 1) {
+          catalogPage = 1;
+        }
+
+        const start = (catalogPage - 1) * CATALOG_PAGE_SIZE;
+        const end = start + CATALOG_PAGE_SIZE;
+        const visibleSet = new Set(matchedCards.slice(start, end));
+
+        cards.forEach(function (card) {
+          const shouldShow = visibleSet.has(card);
+          card.style.display = shouldShow ? '' : 'none';
+          if (!shouldShow && card.hasAttribute('open')) {
+            card.removeAttribute('open');
+          }
+        });
+
+        const pageInfo = document.getElementById('catalog-page-info');
+        const prevBtn = document.getElementById('catalog-page-prev');
+        const nextBtn = document.getElementById('catalog-page-next');
+        const count = document.getElementById('catalog-filter-count');
+
+        const first = totalMatched === 0 ? 0 : start + 1;
+        const last = totalMatched === 0 ? 0 : Math.min(end, totalMatched);
+
+        if (pageInfo) {
+          pageInfo.textContent = 'Page ' + catalogPage + '/' + totalPages + ' - showing ' + first + '-' + last + ' of ' + totalMatched;
+        }
+        if (prevBtn) {
+          prevBtn.disabled = catalogPage <= 1;
+        }
+        if (nextBtn) {
+          nextBtn.disabled = catalogPage >= totalPages;
+        }
+        if (count) {
+          count.textContent = totalMatched + ' matching iFlow';
+        }
+
+        updateCardExpandButtons();
+      }
+
+      function inferCellValue(rawValue, typeHint) {
+        const normalized = String(rawValue || '').trim();
+        const compact = normalized.replace(/,/g, '');
+
+        if (typeHint === 'number') {
+          const numeric = Number(compact);
+          return { type: 'number', value: Number.isFinite(numeric) ? numeric : Number.NEGATIVE_INFINITY };
+        }
+
+        if (typeHint === 'text') {
+          return { type: 'text', value: normalized.toLowerCase() };
+        }
+
+        const numeric = Number(compact);
+        if (compact && Number.isFinite(numeric) && /^-?\d+(?:\.\d+)?$/.test(compact)) {
+          return { type: 'number', value: numeric };
+        }
+
+        return { type: 'text', value: normalized.toLowerCase() };
+      }
+
+      function sortTable(shell, columnIndex, direction, typeHint) {
+        if (!shell) {
+          return;
+        }
+
+        const tbody = shell.querySelector('tbody');
+        if (!tbody) {
+          return;
+        }
+
+        const rows = Array.from(tbody.querySelectorAll('tr[data-row]'));
+        rows.sort(function (left, right) {
+          const leftText = (left.children[columnIndex] && left.children[columnIndex].textContent) || '';
+          const rightText = (right.children[columnIndex] && right.children[columnIndex].textContent) || '';
+          const leftValue = inferCellValue(leftText, typeHint);
+          const rightValue = inferCellValue(rightText, typeHint);
+
+          if (leftValue.type === 'number' && rightValue.type === 'number' && leftValue.value !== rightValue.value) {
+            return direction === 'asc' ? leftValue.value - rightValue.value : rightValue.value - leftValue.value;
+          }
+
+          const compare = String(leftValue.value || '').localeCompare(String(rightValue.value || ''));
+          if (compare !== 0) {
+            return direction === 'asc' ? compare : -compare;
+          }
+
+          return Number(left.getAttribute('data-original-index') || 0) - Number(right.getAttribute('data-original-index') || 0);
+        });
+
+        rows.forEach(function (row) {
+          tbody.appendChild(row);
+        });
+
+        shell.querySelectorAll('.table-sort-btn').forEach(function (button) {
+          const isActive = Number(button.getAttribute('data-sort-col') || -1) === columnIndex;
+          const baseLabel = button.getAttribute('data-base-label') || button.textContent.replace(/\s+[▲▼]$/, '');
+          button.setAttribute('data-base-label', baseLabel);
+          button.textContent = baseLabel + (isActive ? (direction === 'asc' ? ' ▲' : ' ▼') : '');
+          button.setAttribute('data-sort-direction', isActive ? direction : '');
+          button.classList.toggle('table-sort-active', isActive);
+        });
+
+        const toggle = shell.querySelector('.table-toggle');
+        if (toggle) {
+          toggle.setAttribute('data-expanded', '0');
+        }
+        applyTableLimit(shell);
       }
 
       function applySectionFilters(filterContainer) {
@@ -990,14 +1366,20 @@ function renderClientScript() {
         updateTopicSortHeaders();
       }
 
-      function applyFilters() {
+      function applyFilters(options) {
+        const resetPage = options && options.resetPage;
+        if (resetPage) {
+          catalogPage = 1;
+        }
+
         const searchInput = document.getElementById('filter-search');
         const packageSelect = document.getElementById('filter-package');
         const iflowSelect = document.getElementById('filter-iflow');
         const countLabel = document.getElementById('filter-count');
+        const scopeText = document.getElementById('filter-scope-text');
+        const activeFilterList = document.getElementById('active-filter-list');
         const catalogIflow = document.getElementById('catalog-filter-iflow');
         const catalogPackage = document.getElementById('catalog-filter-package');
-        const catalogCount = document.getElementById('catalog-filter-count');
         const search = (searchInput ? searchInput.value : '').trim().toLowerCase();
         const packageValue = packageSelect ? packageSelect.value : '';
         const iflowValue = iflowSelect ? iflowSelect.value : '';
@@ -1005,32 +1387,70 @@ function renderClientScript() {
         const catalogPackageValue = catalogPackage ? catalogPackage.value : '';
 
         const cards = Array.from(document.querySelectorAll('.integration'));
-        let visible = 0;
+        const totalCards = cards.length;
+        let matched = 0;
 
         cards.forEach((card) => {
           const cardSearch = (card.getAttribute('data-search') || '').toLowerCase();
           const cardPackage = card.getAttribute('data-package') || '';
           const cardIflow = card.getAttribute('data-iflow') || '';
+          const matchesSummary = !activeSummaryFilter || activeSummaryFilter === 'all' || card.getAttribute('data-flag-' + activeSummaryFilter) === '1';
 
           const matchesSearch = !search || cardSearch.includes(search);
           const matchesPackage = !packageValue || cardPackage === packageValue;
           const matchesIflow = !iflowValue || cardIflow === iflowValue;
           const matchesCatalogPackage = !catalogPackageValue || cardPackage === catalogPackageValue;
           const matchesCatalogIflow = !catalogIflowValue || cardIflow === catalogIflowValue;
-          const show = matchesSearch && matchesPackage && matchesIflow && matchesCatalogPackage && matchesCatalogIflow;
+          const show = matchesSummary && matchesSearch && matchesPackage && matchesIflow && matchesCatalogPackage && matchesCatalogIflow;
 
-          card.style.display = show ? '' : 'none';
+          card.setAttribute('data-filter-match', show ? '1' : '0');
           if (show) {
-            visible += 1;
+            matched += 1;
           }
         });
 
+        applyCatalogPagination();
+
         if (countLabel) {
-          countLabel.textContent = visible + ' iFlow visible';
+          countLabel.textContent = matched + ' / ' + totalCards + ' iFlow matching filters';
         }
-        if (catalogCount) {
-          catalogCount.textContent = visible + ' iFlow in catalog';
+
+        const activeFilters = [];
+        if (activeSummaryFilter && activeSummaryFilter !== 'all' && activeSummaryLabel) {
+          activeFilters.push('Overview: ' + activeSummaryLabel);
         }
+        if (search) {
+          activeFilters.push('Search: ' + search);
+        }
+        if (packageValue) {
+          activeFilters.push('Package: ' + packageValue);
+        }
+        if (iflowValue) {
+          activeFilters.push('iFlow: ' + iflowValue);
+        }
+        if (catalogPackageValue) {
+          activeFilters.push('Catalog Package: ' + catalogPackageValue);
+        }
+        if (catalogIflowValue) {
+          activeFilters.push('Catalog iFlow: ' + catalogIflowValue);
+        }
+
+        if (scopeText) {
+          scopeText.textContent = activeFilters.length === 0
+            ? ('No active filter. Showing all ' + totalCards + ' iFlows in catalog.')
+            : ('Active global filters: ' + activeFilters.length + '. The iFlow Catalog currently has ' + matched + ' matching iFlows.');
+        }
+
+        if (activeFilterList) {
+          activeFilterList.innerHTML = activeFilters.map(function (label) {
+            return '<span class="active-filter-chip">' + label + '</span>';
+          }).join('');
+        }
+
+        document.querySelectorAll('.summary-filter-trigger').forEach(function (button) {
+          const isActive = activeSummaryFilter && button.getAttribute('data-summary-filter') === activeSummaryFilter;
+          button.classList.toggle('summary-filter-active', isActive);
+        });
       }
 
       function activateTab(tabId) {
@@ -1110,13 +1530,30 @@ function renderClientScript() {
           return;
         }
 
-        if (target.id === 'refresh-docs') {
-          window.location.reload();
-        }
-
         if (target.classList.contains('topic-link')) {
           event.preventDefault();
           openTopicLink(target);
+        }
+
+        const integrationSummary = target.closest('.integration-card-summary');
+        if (integrationSummary && !target.closest('.card-expand-btn')) {
+          event.preventDefault();
+          return;
+        }
+
+        const expandButton = target.closest('.card-expand-btn');
+        if (expandButton) {
+          event.preventDefault();
+          const card = expandButton.closest('details.integration');
+          if (card) {
+            if (card.hasAttribute('open')) {
+              card.removeAttribute('open');
+            } else {
+              card.setAttribute('open', '');
+            }
+            updateCardExpandButtons();
+          }
+          return;
         }
 
         if (target.classList.contains('table-toggle')) {
@@ -1128,10 +1565,24 @@ function renderClientScript() {
           }
         }
 
+        const tableSortBtn = target.closest('.table-sort-btn');
+        if (tableSortBtn) {
+          const shell = tableSortBtn.closest('.table-shell');
+          if (shell) {
+            const columnIndex = Number(tableSortBtn.getAttribute('data-sort-col') || 0);
+            const currentDirection = tableSortBtn.getAttribute('data-sort-direction') === 'asc' ? 'asc' : 'desc';
+            const nextDirection = currentDirection === 'asc' ? 'desc' : 'asc';
+            sortTable(shell, columnIndex, nextDirection, tableSortBtn.getAttribute('data-sort-type') || 'auto');
+          }
+          return;
+        }
+
         if (target.id === 'filter-reset') {
           const searchInput = document.getElementById('filter-search');
           const packageSelect = document.getElementById('filter-package');
           const iflowSelect = document.getElementById('filter-iflow');
+          activeSummaryFilter = '';
+          activeSummaryLabel = '';
           if (searchInput) {
             searchInput.value = '';
           }
@@ -1141,7 +1592,7 @@ function renderClientScript() {
           if (iflowSelect) {
             iflowSelect.value = '';
           }
-          applyFilters();
+          applyFilters({ resetPage: true });
           updateAllTables();
         }
 
@@ -1167,7 +1618,51 @@ function renderClientScript() {
           if (catalogPackage) {
             catalogPackage.value = '';
           }
-          applyFilters();
+          applyFilters({ resetPage: true });
+        }
+
+        if (target.id === 'catalog-page-prev') {
+          if (catalogPage > 1) {
+            catalogPage -= 1;
+            applyCatalogPagination();
+          }
+        }
+
+        if (target.id === 'catalog-page-next') {
+          catalogPage += 1;
+          applyCatalogPagination();
+        }
+
+        if (target.id === 'open-catalog-from-filter') {
+          activateTab('tab-internals');
+          const catalog = document.getElementById('iflow-catalog');
+          if (catalog) {
+            setTimeout(function () {
+              catalog.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 10);
+          }
+        }
+
+        const summaryFilterTrigger = target.closest('.summary-filter-trigger');
+        if (summaryFilterTrigger) {
+          const nextFilter = summaryFilterTrigger.getAttribute('data-summary-filter') || '';
+          if (activeSummaryFilter === nextFilter) {
+            activeSummaryFilter = '';
+            activeSummaryLabel = '';
+          } else {
+            activeSummaryFilter = nextFilter;
+            activeSummaryLabel = summaryFilterTrigger.getAttribute('data-summary-label') || '';
+          }
+
+          applyFilters({ resetPage: true });
+          activateTab('tab-internals');
+          const catalog = document.getElementById('iflow-catalog');
+          if (catalog) {
+            setTimeout(function () {
+              catalog.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 10);
+          }
+          return;
         }
 
         if (target.classList.contains('tab-btn') && target.hasAttribute('data-tab-target')) {
@@ -1178,8 +1673,12 @@ function renderClientScript() {
       ['filter-search', 'filter-package', 'filter-iflow', 'catalog-filter-iflow', 'catalog-filter-package'].forEach(function (id) {
         const element = document.getElementById(id);
         if (element) {
-          element.addEventListener('input', applyFilters);
-          element.addEventListener('change', applyFilters);
+          element.addEventListener('input', function () {
+            applyFilters({ resetPage: true });
+          });
+          element.addEventListener('change', function () {
+            applyFilters({ resetPage: true });
+          });
         }
       });
 
@@ -1198,13 +1697,14 @@ function renderClientScript() {
         });
       }
 
-      applyFilters();
+      applyFilters({ resetPage: true });
       populateTopicValues();
       renderTopicResults();
       updateTopicSortHeaders();
       activateTab('tab-overview');
       initSectionFilters();
       updateAllTables();
+      updateCardExpandButtons();
       applyHashRouting();
     })();
   </script>
@@ -1213,6 +1713,8 @@ function renderClientScript() {
 
 function renderHtml(model) {
   const generatedAt = escapeHtml(model.generatedAt);
+  const parsedYear = new Date(model.generatedAt).getFullYear();
+  const copyrightYear = Number.isFinite(parsedYear) ? parsedYear : new Date().getFullYear();
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1222,27 +1724,32 @@ function renderHtml(model) {
   <title>SAP CPI Documentation</title>
   <style>
     :root {
-      --bg: #f5f3eb;
-      --card: #fffef8;
-      --ink: #222222;
-      --muted: #57534e;
-      --border: #d6d3d1;
-      --soft-warn: #fff7ed;
-      --soft-danger: #fef2f2;
+      --bg: #f3f7ff;
+      --card: #ffffff;
+      --ink: #0f1d40;
+      --muted: #4a5a85;
+      --border: #d7e2ff;
+      --soft-warn: #fff6e8;
+      --soft-danger: #ffeef2;
+      --hnrg-primary: #1f4ed8;
+      --hnrg-secondary: #00a7e1;
+      --hnrg-accent: #ff5c7c;
+      --hnrg-dark: #101935;
     }
     body {
       margin: 0;
       font-family: "Segoe UI", Tahoma, sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at 20% 0%, #fef3c7 0, transparent 30%),
-        radial-gradient(circle at 80% 10%, #bfdbfe 0, transparent 25%),
+        radial-gradient(circle at 20% 0%, #dbeafe 0, transparent 32%),
+        radial-gradient(circle at 85% 8%, #e0f2fe 0, transparent 30%),
         var(--bg);
     }
     header {
       padding: 2rem 1rem;
-      background: linear-gradient(135deg, #134e4a 0%, #0f766e 60%, #14b8a6 100%);
+      background: linear-gradient(125deg, var(--hnrg-dark) 0%, #19327a 48%, var(--hnrg-primary) 100%);
       color: #ffffff;
+      border-bottom: 4px solid var(--hnrg-accent);
     }
     .header-bar {
       max-width: 1360px;
@@ -1258,29 +1765,44 @@ function renderHtml(model) {
       align-items: end;
       gap: 0.45rem;
     }
-    .header-actions button {
-      font: inherit;
-      border: 1px solid rgba(255,255,255,0.35);
-      background: rgba(255,255,255,0.12);
+    .header-brand {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      height: auto;
+      border: none;
+      background: transparent;
       color: #ffffff;
-      border-radius: 999px;
-      padding: 0.45rem 0.85rem;
-      cursor: pointer;
-      font-weight: 600;
-      backdrop-filter: blur(6px);
+      text-decoration: none;
+      padding: 0;
+      box-sizing: border-box;
     }
-    .header-actions button:hover {
-      background: rgba(255,255,255,0.2);
+    .header-brand img {
+      display: block;
+      width: auto;
+      height: 38px;
+      max-width: 180px;
+      object-fit: contain;
     }
-    .header-actions small {
-      color: rgba(255,255,255,0.85);
-      text-align: right;
-      max-width: 280px;
+    .header-brand-fallback {
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-size: 0.92rem;
     }
     main {
       padding: 1rem;
       max-width: 1360px;
       margin: 0 auto;
+    }
+    footer {
+      max-width: 1360px;
+      margin: 0 auto 1.25rem auto;
+      padding: 0.25rem 1rem;
+      color: #5d6d95;
+      font-size: 0.84rem;
+      text-align: center;
     }
     .card {
       background: var(--card);
@@ -1290,6 +1812,74 @@ function renderHtml(model) {
       margin: 0 0 1rem 0;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
       animation: rise 260ms ease-in;
+    }
+    .summary-card {
+      border: 1px solid #b9ccff;
+      background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+    }
+    .summary-subtitle {
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+    .summary-hero-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.7rem;
+      margin-top: 0.75rem;
+    }
+    .summary-hero-item {
+      border: 1px solid #c7d7ff;
+      background: linear-gradient(155deg, #eef4ff 0%, #ffffff 100%);
+      border-radius: 12px;
+      padding: 0.7rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .summary-hero-item strong {
+      font-size: 1.5rem;
+      line-height: 1;
+      color: #17306d;
+    }
+    .summary-hero-item span {
+      font-size: 0.84rem;
+      color: #334a82;
+      font-weight: 600;
+    }
+    .summary-metrics-grid {
+      margin-top: 0.75rem;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.55rem;
+    }
+    .summary-metric-item {
+      border-radius: 10px;
+      border: 1px solid #e2e8ff;
+      background: #ffffff;
+      padding: 0.5rem 0.65rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .summary-filter-active {
+      border-color: var(--hnrg-primary);
+      box-shadow: 0 10px 20px rgba(31, 78, 216, 0.16);
+      transform: translateY(-1px);
+    }
+    .summary-metric-item span {
+      font-size: 0.82rem;
+      color: #42588d;
+    }
+    .summary-metric-item strong {
+      font-size: 1rem;
+      color: #142b61;
     }
     .integration-attention {
       border-color: #fecaca;
@@ -1302,6 +1892,8 @@ function renderHtml(model) {
     .integration {
       overflow: hidden;
       position: relative;
+      margin: 0;
+      padding: 0;
     }
     .integration::before {
       content: "";
@@ -1311,21 +1903,39 @@ function renderHtml(model) {
       background: linear-gradient(90deg, #0f766e 0%, #14b8a6 45%, #f59e0b 100%);
       opacity: 0.9;
     }
-    .integration details {
-      margin: 0.6rem 0;
+    .integration-card-summary {
+      list-style: none;
+      cursor: default;
+      padding: 0.8rem;
+    }
+    .integration-card-summary::-webkit-details-marker {
+      display: none;
+    }
+    .integration-expanded {
+      padding: 0 0.8rem 0.85rem 0.8rem;
+      border-top: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.82) 0%, rgba(248,250,255,0.96) 100%);
     }
     .integration-hero {
       display: flex;
       justify-content: space-between;
       gap: 1rem;
       align-items: start;
-      margin-bottom: 1rem;
+      margin-bottom: 0.6rem;
       padding-top: 0.35rem;
     }
     .integration-title-wrap h3 {
       margin: 0.2rem 0 0.45rem 0;
-      font-size: 1.35rem;
+      font-size: 1rem;
       line-height: 1.15;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    .integration:not([open]) .integration-title-wrap h3 {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .integration-kicker {
       display: inline-flex;
@@ -1355,7 +1965,45 @@ function renderHtml(model) {
       flex-direction: column;
       align-items: end;
       gap: 0.35rem;
-      min-width: 210px;
+      min-width: 0;
+    }
+    .integration-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.3rem 0.6rem;
+      margin-top: 0.35rem;
+    }
+    .integration-meta-grid p {
+      margin: 0;
+      display: grid;
+      gap: 0.05rem;
+    }
+    .integration-meta-grid span {
+      font-size: 0.72rem;
+      color: #5f729f;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 700;
+    }
+    .integration-meta-grid strong {
+      font-size: 0.85rem;
+      color: #1e325f;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    .card-expand-btn {
+      font: inherit;
+      border: 1px solid var(--hnrg-primary);
+      background: #ffffff;
+      color: var(--hnrg-primary);
+      border-radius: 999px;
+      padding: 0.24rem 0.65rem;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+    .card-expand-btn:hover {
+      background: #edf3ff;
     }
     .flag-caption {
       font-size: 0.76rem;
@@ -1369,6 +2017,9 @@ function renderHtml(model) {
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 0.55rem;
       margin-bottom: 0.65rem;
+    }
+    .integration-summary-grid-compact {
+      margin-bottom: 0.5rem;
     }
     .summary-pill {
       border-radius: 10px;
@@ -1391,7 +2042,37 @@ function renderHtml(model) {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 0.55rem;
-      margin-bottom: 0.7rem;
+      margin: 0.7rem 0;
+    }
+    .integration-preview-table {
+      display: grid;
+      border: 1px solid #dbe4f8;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fbfcff;
+    }
+    .integration-preview-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 240px) 1fr;
+      gap: 0.55rem;
+      align-items: start;
+      padding: 0.45rem 0.55rem;
+      border-bottom: 1px solid #e4ebfb;
+    }
+    .integration-preview-row:last-child {
+      border-bottom: none;
+    }
+    .integration-preview-key {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #5b6f9f;
+      font-weight: 700;
+      line-height: 1.35;
+      padding-top: 0.12rem;
+    }
+    .integration-preview-value {
+      min-width: 0;
     }
     .quick-panel {
       border-radius: 10px;
@@ -1567,17 +2248,55 @@ function renderHtml(model) {
       gap: 0.7rem;
     }
     .topic-link {
-      display: block;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
       text-decoration: none;
-      color: #134e4a;
-      border: 1px solid var(--border);
-      background: #ffffff;
+      color: #17306d;
+      border: 1px solid #cedcff;
+      background: linear-gradient(180deg, #ffffff 0%, #f4f8ff 100%);
       border-radius: 10px;
       padding: 0.65rem 0.7rem;
-      font-weight: 600;
+      font-weight: 700;
+      transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
     }
     .topic-link:hover {
-      background: #f0fdfa;
+      border-color: #8fb0ff;
+      box-shadow: 0 8px 20px rgba(31, 78, 216, 0.14);
+      transform: translateY(-1px);
+    }
+    .topic-link small {
+      color: #4b5d8b;
+      font-weight: 600;
+      font-size: 0.78rem;
+    }
+    .section-index-card {
+      padding-bottom: 0.85rem;
+    }
+    .section-index-links {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 0.6rem;
+    }
+    .section-jump-link {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      text-decoration: none;
+      color: #17306d;
+      border: 1px solid #d8e3ff;
+      border-radius: 10px;
+      background: #f9fbff;
+      padding: 0.6rem 0.7rem;
+      font-weight: 700;
+    }
+    .section-jump-link:hover {
+      border-color: #8fb0ff;
+      box-shadow: 0 8px 18px rgba(31, 78, 216, 0.12);
+    }
+    .section-jump-link small {
+      color: #4b5d8b;
+      font-size: 0.78rem;
     }
     .topic-explorer-grid {
       display: grid;
@@ -1620,7 +2339,7 @@ function renderHtml(model) {
       font-weight: 700;
     }
     .topic-sort-btn.topic-sort-active {
-      color: #0f766e;
+      color: var(--hnrg-primary);
     }
     .tabs-row {
       display: flex;
@@ -1636,12 +2355,12 @@ function renderHtml(model) {
       padding: 0.4rem 0.75rem;
       cursor: pointer;
       font-weight: 600;
-      color: #134e4a;
+      color: #1b3d8f;
     }
     .tab-btn.active {
-      background: #134e4a;
+      background: var(--hnrg-primary);
       color: #ffffff;
-      border-color: #134e4a;
+      border-color: var(--hnrg-primary);
     }
     .tab-panel {
       display: none;
@@ -1669,6 +2388,51 @@ function renderHtml(model) {
       border: 1px solid var(--border);
       background: #ffffff;
     }
+    .filter-impact {
+      margin-top: 0.75rem;
+      border: 1px solid #d7e3ff;
+      border-radius: 10px;
+      background: #f8faff;
+      padding: 0.65rem;
+      display: grid;
+      gap: 0.5rem;
+    }
+    #filter-scope-text {
+      margin: 0;
+      color: #324a83;
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+    .active-filter-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+    .active-filter-chip {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 0.2rem 0.55rem;
+      border: 1px solid #bcd0ff;
+      background: #eaf1ff;
+      color: #274483;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    #open-catalog-from-filter {
+      justify-self: start;
+      border: 1px solid var(--hnrg-primary);
+      background: var(--hnrg-primary);
+      color: #ffffff;
+      border-radius: 999px;
+      padding: 0.35rem 0.75rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    #open-catalog-from-filter:hover {
+      background: #193ea9;
+      border-color: #193ea9;
+    }
     .filters-actions {
       display: flex;
       gap: 0.6rem;
@@ -1681,6 +2445,57 @@ function renderHtml(model) {
       gap: 0.65rem;
       align-items: end;
       margin: 0.75rem 0;
+    }
+    .catalog-toolbar {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) 2fr;
+      gap: 1rem;
+      align-items: start;
+    }
+    .catalog-toolbar h3 {
+      margin: 0;
+    }
+    .catalog-toolbar p {
+      margin: 0.25rem 0 0 0;
+      color: var(--muted);
+    }
+    .catalog-pagination {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      justify-content: flex-end;
+      margin-top: 0.15rem;
+    }
+    .catalog-pagination button {
+      font: inherit;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      border-radius: 999px;
+      padding: 0.32rem 0.72rem;
+      cursor: pointer;
+      font-weight: 700;
+      color: #274483;
+    }
+    .catalog-pagination button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    #catalog-page-info {
+      font-size: 0.84rem;
+      color: #3a4f84;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .integration-catalog-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.7rem;
+      align-items: start;
+      margin-top: 0.9rem;
+    }
+    .integration[open] {
+      grid-column: 1 / -1;
+      box-shadow: 0 16px 34px rgba(14, 32, 78, 0.14);
     }
     .section-filters label {
       display: flex;
@@ -1699,6 +2514,47 @@ function renderHtml(model) {
     }
     .section-filter-wide {
       grid-column: span 2;
+    }
+    .explorer-section {
+      padding: 0;
+      overflow: hidden;
+    }
+    .explorer-details {
+      display: block;
+    }
+    .explorer-details summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 0.95rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: center;
+      background: linear-gradient(180deg, #ffffff 0%, #f7faff 100%);
+      font-weight: 700;
+      color: #1b3d8f;
+    }
+    .explorer-details summary::-webkit-details-marker {
+      display: none;
+    }
+    .explorer-details summary small {
+      font-size: 0.82rem;
+      color: #5870a6;
+      font-weight: 600;
+      text-align: right;
+    }
+    .explorer-body {
+      padding: 0 1rem 1rem 1rem;
+      border-top: 1px solid var(--border);
+      background: #ffffff;
+    }
+    .explorer-body > .card {
+      margin-bottom: 0;
+      box-shadow: none;
+      border-radius: 0;
+      border: none;
+      padding: 0.85rem 0 0 0;
+      background: transparent;
     }
     .hub-list {
       display: grid;
@@ -1840,6 +2696,20 @@ function renderHtml(model) {
       top: 0;
       z-index: 1;
     }
+    .table-sort-btn {
+      font: inherit;
+      font-weight: 700;
+      color: inherit;
+      background: transparent;
+      border: none;
+      padding: 0;
+      text-align: left;
+      cursor: pointer;
+      width: 100%;
+    }
+    .table-sort-active {
+      color: var(--hnrg-primary);
+    }
     .table-meta {
       display: flex;
       justify-content: space-between;
@@ -1868,11 +2738,24 @@ function renderHtml(model) {
       color: var(--muted);
     }
     @media (max-width: 900px) {
+      .summary-hero-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .summary-metrics-grid {
+        grid-template-columns: 1fr;
+      }
       .filters-grid {
         grid-template-columns: 1fr;
       }
       .topic-explorer-grid {
         grid-template-columns: 1fr;
+      }
+      .catalog-toolbar {
+        grid-template-columns: 1fr;
+      }
+      .catalog-pagination {
+        justify-content: flex-start;
+        flex-wrap: wrap;
       }
       .integration-hero {
         flex-direction: column;
@@ -1881,8 +2764,18 @@ function renderHtml(model) {
         align-items: start;
         min-width: 0;
       }
+      .integration-meta-grid {
+        grid-template-columns: 1fr;
+      }
       .integration-summary-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .integration-preview-row {
+        grid-template-columns: 1fr;
+        gap: 0.3rem;
+      }
+      .integration[open] {
+        grid-column: span 1;
       }
       .integration-quick-grid {
         grid-template-columns: 1fr;
@@ -1920,8 +2813,10 @@ function renderHtml(model) {
         <p>Generated at ${generatedAt}</p>
       </div>
       <div class="header-actions">
-        <button id="refresh-docs" type="button">Refresh Documentation</button>
-        <small>Reloads the generated HTML currently on disk after a new generation.</small>
+        <a class="header-brand" href="https://hnrg.it/" target="_blank" rel="noopener noreferrer" aria-label="HNRG">
+          <img src="https://hnrg.it/assets/images/logos/logo-hnrg-color.svg" alt="HNRG" loading="lazy" />
+          <span class="header-brand-fallback" style="display:none;">HNRG</span>
+        </a>
       </div>
     </div>
   </header>
@@ -1934,22 +2829,36 @@ function renderHtml(model) {
       ${renderTopicExplorer()}
     </section>
     <section class="tab-panel" id="tab-security" aria-hidden="true">
-      ${renderAdapterInventory(model)}
+      ${renderSectionMenu("Security Sections", [
+        { id: "adapter-inventory-section", tab: "tab-security", label: "Adapter & Security Inventory", description: "Sortable inventory of iFlow, package, direction, type and more" }
+      ])}
+      ${renderCollapsibleSection("adapter-inventory-section", "Adapter & Security Inventory", "Open the security inventory table and sort by any visible column.", renderAdapterInventory(model), { open: true })}
     </section>
     <section class="tab-panel" id="tab-connectivity" aria-hidden="true">
-      <div id="inter-iflow-section">${renderInterIflowLinks(model)}</div>
-      <div id="hubs-section">${renderConnectionHubs(model)}</div>
+      ${renderSectionMenu("Connectivity Sections", [
+        { id: "inter-iflow-section", tab: "tab-connectivity", label: "Inter-iFlow Links", description: "Producer, consumer, adapter, endpoint, relation" },
+        { id: "hubs-section", tab: "tab-connectivity", label: "Connection Topologies", description: "One-to-many and many-to-one hubs" }
+      ])}
+      ${renderCollapsibleSection("inter-iflow-section", "Inter-iFlow Links", "Open the sortable connectivity table.", renderInterIflowLinks(model), { open: true })}
+      ${renderCollapsibleSection("hubs-section", "Connection Topologies", "Expand shared endpoints and topology hubs.", renderConnectionHubs(model), { open: false })}
     </section>
     <section class="tab-panel" id="tab-internals" aria-hidden="true">
-      <div id="dependency-section">${renderDependencyGraph(model)}</div>
+      ${renderSectionMenu("Internals Sections", [
+        { id: "iflow-catalog", tab: "tab-internals", label: "iFlow Catalog", description: "Catalog of all flows with filters and expandable deep details" },
+        { id: "dependency-section", tab: "tab-internals", label: "Dependency Map", description: "Artifact dependency view, collapsed by default" }
+      ])}
       <section class="card" id="iflow-catalog">
-        <h2>iFlow Catalog</h2>
-        <p>Ordered by security/attention flags first, then by name. Large sections are limited to ${DEFAULT_LIMIT} rows by default.</p>
         ${renderCatalogFilters(model)}
+        <div class="integration-catalog-grid">
+          ${renderIntegrations(model)}
+        </div>
       </section>
-      ${renderIntegrations(model)}
+      ${renderCollapsibleSection("dependency-section", "Dependency Map", "Collapsed by default so the catalog stays first.", renderDependencyGraph(model), { open: false })}
     </section>
   </main>
+  <footer>
+    Copyright &copy; ${copyrightYear} HNRG. All rights reserved.
+  </footer>
   ${renderClientScript(model)}
 </body>
 </html>`;
