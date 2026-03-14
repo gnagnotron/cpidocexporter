@@ -1786,6 +1786,7 @@ function renderHtml(model) {
       object-fit: contain;
     }
     .header-brand-fallback {
+      display: none;
       font-weight: 800;
       letter-spacing: 0.12em;
       text-transform: uppercase;
@@ -2814,8 +2815,8 @@ function renderHtml(model) {
       </div>
       <div class="header-actions">
         <a class="header-brand" href="https://hnrg.it/" target="_blank" rel="noopener noreferrer" aria-label="HNRG">
-          <img src="https://hnrg.it/assets/images/logos/logo-hnrg-color.svg" alt="HNRG" loading="lazy" />
-          <span class="header-brand-fallback" style="display:none;">HNRG</span>
+          <img src="https://hnrg.it/assets/images/logos/logo-hnrg-color.svg" alt="HNRG" loading="lazy" onerror="this.style.display='none'; if(this.nextElementSibling){ this.nextElementSibling.style.display='inline'; }" />
+          <span class="header-brand-fallback">HNRG</span>
         </a>
       </div>
     </div>
