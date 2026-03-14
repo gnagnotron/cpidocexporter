@@ -691,6 +691,18 @@ function parseEndpointFromServiceId(serviceId) {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
+function getExpandedResults(collection) {
+  if (Array.isArray(collection)) {
+    return collection;
+  }
+
+  if (collection && Array.isArray(collection.results)) {
+    return collection.results;
+  }
+
+  return [];
+}
+
 function mapServiceEndpointsForIflow(iflow, serviceEndpoints) {
   const flowId = iflow.Id || "";
   const flowName = iflow.Name || "";
@@ -701,18 +713,57 @@ function mapServiceEndpointsForIflow(iflow, serviceEndpoints) {
       const epId = ep.Id || "";
       return epName === flowName || epId.startsWith(`${flowId}$`) || epId.startsWith(`${flowName}$`);
     })
-    .map((ep) => ({
-      type: ep.Protocol || "",
-      name: ep.Name || ep.Id || "",
-      direction: "Sender",
-      system: ep.Name || "",
-      endpoint: parseEndpointFromServiceId(ep.Id),
-      transport: ep.Protocol || "",
-      messageProtocol: "",
-      authMode: "",
-      credentialRefs: [],
-      properties: []
-    }));
+    .flatMap((ep) => {
+      const parsedEndpoint = parseEndpointFromServiceId(ep.Id);
+      const entryPoints = getExpandedResults(ep.EntryPoints);
+      const apiDefinitions = getExpandedResults(ep.ApiDefinitions);
+
+      const entryPointUrls = entryPoints
+        .map((entryPoint) => firstNonEmpty([entryPoint.URL, entryPoint.Url, entryPoint.url]))
+        .filter(Boolean);
+
+      const candidateEndpoints = entryPointUrls.length > 0
+        ? uniqueStrings(entryPointUrls)
+        : uniqueStrings([parsedEndpoint]);
+      if (candidateEndpoints.length === 0) {
+        return [];
+      }
+
+      const entryPointTypes = uniqueStrings(
+        entryPoints
+          .map((entryPoint) => firstNonEmpty([entryPoint.Type, entryPoint.type]))
+          .filter(Boolean)
+      );
+
+      const apiDefinitionTypes = uniqueStrings(
+        apiDefinitions
+          .map((definition) => firstNonEmpty([definition.Type, definition.type]))
+          .filter(Boolean)
+      );
+
+      const apiDefinitionUrls = uniqueStrings(
+        apiDefinitions
+          .map((definition) => firstNonEmpty([definition.URL, definition.Url, definition.url]))
+          .filter(Boolean)
+      );
+
+      return candidateEndpoints.map((endpoint) => ({
+        type: ep.Protocol || "",
+        name: ep.Name || ep.Id || "",
+        direction: "Sender",
+        system: ep.Name || "",
+        endpoint,
+        transport: ep.Protocol || "",
+        messageProtocol: "",
+        authMode: "",
+        credentialRefs: [],
+        properties: [
+          entryPointTypes.length > 0 ? `entryPointTypes=${entryPointTypes.join(",")}` : "",
+          apiDefinitionTypes.length > 0 ? `apiDefinitions=${apiDefinitionTypes.join(",")}` : "",
+          apiDefinitionUrls.length > 0 ? `apiDefinitionUrls=${apiDefinitionUrls.join(" | ")}` : ""
+        ].filter(Boolean)
+      }));
+    });
 }
 
 function extractErrorHandling(resources, configurations) {
@@ -857,7 +908,16 @@ async function fetchAllIflows(config, metrics, onProgress) {
   logger.info("Fetched integration packages", { count: packages.length });
   reportProgress({ percentage: 15, stage: `Fetched packages (${packages.length})` });
 
-  const serviceEndpoints = await fetchPagedOData(client, "/api/v1/ServiceEndpoints", config, metrics);
+  let serviceEndpoints = [];
+  try {
+    serviceEndpoints = await fetchPagedOData(client, "/api/v1/ServiceEndpoints?$expand=EntryPoints,ApiDefinitions", config, metrics);
+  } catch (error) {
+    logger.warn("ServiceEndpoints expand not supported, falling back to base endpoint list", {
+      status: error.response ? error.response.status : null,
+      error: error.message
+    });
+    serviceEndpoints = await fetchPagedOData(client, "/api/v1/ServiceEndpoints", config, metrics);
+  }
   logger.info("Fetched service endpoints", { count: serviceEndpoints.length });
   reportProgress({ percentage: 20, stage: `Fetched service endpoints (${serviceEndpoints.length})` });
 

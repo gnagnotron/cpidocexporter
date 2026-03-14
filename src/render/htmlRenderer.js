@@ -303,6 +303,7 @@ function renderTopicMenu() {
       <div class="topic-grid">
         <a class="topic-link" href="#topic-explorer" data-open-tab="tab-overview"><span>Guided Search</span><small>Find iFlows by topic and value</small></a>
         <a class="topic-link" href="#inter-iflow-section" data-open-tab="tab-connectivity"><span>Inter-iFlow Links</span><small>Producer and consumer links</small></a>
+        <a class="topic-link" href="#entrypoints-section" data-open-tab="tab-connectivity"><span>iFlow Entry Points</span><small>Ingress endpoints by environment type</small></a>
         <a class="topic-link" href="#hubs-section" data-open-tab="tab-connectivity"><span>Connection Topologies</span><small>Shared endpoints and hubs</small></a>
         <a class="topic-link" href="#adapter-inventory-section" data-open-tab="tab-security"><span>Adapters & Security</span><small>Inventory and risk flags</small></a>
         <a class="topic-link" href="#dependency-section" data-open-tab="tab-internals"><span>Dependencies</span><small>Artifact dependency map</small></a>
@@ -564,6 +565,61 @@ function renderInterIflowLinks(model) {
     { limit: DEFAULT_LIMIT, tableId: "inter-iflow-links", emptyMessage: "No explicit iFlow-to-iFlow links detected." }
   );
   return `<section class="card"><h2>Inter-iFlow Links</h2><p>Links are inferred from shared receiver/sender endpoints. Producer sends, consumer receives.</p><div class="section-filters" data-filter-target="inter-iflow-links"><label><span>Producer</span><select data-filter-col="0">${renderOptions(producers, "All producers")}</select></label><label><span>Consumer</span><select data-filter-col="1">${renderOptions(consumers, "All consumers")}</select></label><label><span>Adapter</span><select data-filter-col="2">${renderOptions(adapters, "All adapters")}</select></label><label><span>Endpoint</span><input type="search" data-filter-col="3" placeholder="filter endpoint" /></label><label><span>Relation</span><input type="search" data-filter-col="4" placeholder="direct call, queue..." /></label><button type="button" class="section-filter-reset">Reset</button></div>${table}</section>`;
+}
+
+function renderEntryPointsInventory(model) {
+  const entries = [];
+
+  (Array.isArray(model.integrations) ? model.integrations : []).forEach((integration) => {
+    const iflowName = integration.name || integration.id || "";
+    const packageName = integration.packageName || integration.packageId || "";
+
+    (Array.isArray(integration.adapters) ? integration.adapters : []).forEach((adapter) => {
+      const properties = Array.isArray(adapter.properties) ? adapter.properties : [];
+      const entryTypeProperty = properties.find((prop) => String(prop || "").startsWith("entryPointTypes="));
+      if (!entryTypeProperty) {
+        return;
+      }
+
+      const entryPointTypesRaw = String(entryTypeProperty).slice("entryPointTypes=".length);
+      const entryPointTypes = entryPointTypesRaw
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      (entryPointTypes.length > 0 ? entryPointTypes : ["Unknown"]).forEach((entryPointType) => {
+        entries.push({
+          iflowName,
+          packageName,
+          adapterName: adapter.name || adapter.type || "",
+          protocol: adapter.type || adapter.transport || "",
+          entryPointType,
+          endpoint: adapter.endpoint || ""
+        });
+      });
+    });
+  });
+
+  const iflowOptions = entries.map((entry) => entry.iflowName).filter(Boolean);
+  const typeOptions = entries.map((entry) => entry.entryPointType).filter(Boolean);
+  const protocolOptions = entries.map((entry) => entry.protocol).filter(Boolean);
+
+  const rows = entries.map((entry) => [
+    entry.iflowName,
+    entry.packageName,
+    entry.adapterName,
+    entry.entryPointType,
+    entry.protocol,
+    entry.endpoint
+  ]);
+
+  const table = renderTable(
+    ["iFlow", "Package", "Adapter", "EntryPoint Type", "Protocol", "Endpoint"],
+    rows,
+    { limit: DEFAULT_LIMIT, tableId: "entrypoints-inventory", emptyMessage: "No entry point metadata detected." }
+  );
+
+  return `<section class="card"><h2>iFlow Entry Points</h2><p>Search ingress endpoints by iFlow and entry point type (DEV/TEST/PROD/SANDBOX).</p><div class="section-filters" data-filter-target="entrypoints-inventory"><label><span>iFlow</span><select data-filter-col="0">${renderOptions(iflowOptions, "All iFlows")}</select></label><label><span>EntryPoint Type</span><select data-filter-col="3">${renderOptions(typeOptions, "All types")}</select></label><label><span>Protocol</span><select data-filter-col="4">${renderOptions(protocolOptions, "All protocols")}</select></label><label class="section-filter-wide"><span>Endpoint</span><input type="search" data-filter-col="5" placeholder="search endpoint" /></label><button type="button" class="section-filter-reset">Reset</button></div>${table}</section>`;
 }
 
 function renderConnectionHubs(model) {
@@ -2838,9 +2894,11 @@ function renderHtml(model) {
     <section class="tab-panel" id="tab-connectivity" aria-hidden="true">
       ${renderSectionMenu("Connectivity Sections", [
         { id: "inter-iflow-section", tab: "tab-connectivity", label: "Inter-iFlow Links", description: "Producer, consumer, adapter, endpoint, relation" },
+        { id: "entrypoints-section", tab: "tab-connectivity", label: "iFlow Entry Points", description: "Search entry points by iFlow and environment type" },
         { id: "hubs-section", tab: "tab-connectivity", label: "Connection Topologies", description: "One-to-many and many-to-one hubs" }
       ])}
       ${renderCollapsibleSection("inter-iflow-section", "Inter-iFlow Links", "Open the sortable connectivity table.", renderInterIflowLinks(model), { open: true })}
+      ${renderCollapsibleSection("entrypoints-section", "iFlow Entry Points", "Filter by iFlow and entry point type.", renderEntryPointsInventory(model), { open: false })}
       ${renderCollapsibleSection("hubs-section", "Connection Topologies", "Expand shared endpoints and topology hubs.", renderConnectionHubs(model), { open: false })}
     </section>
     <section class="tab-panel" id="tab-internals" aria-hidden="true">
