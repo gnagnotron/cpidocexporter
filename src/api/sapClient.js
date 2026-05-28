@@ -593,14 +593,16 @@ function parseArchiveResources(entries) {
       name: entry.entryName.split("/").pop() || entry.entryName,
       type: inferResourceTypeFromEntry(entry.entryName),
       referencedType: "artifact-zip-entry",
-      size: entry.header && typeof entry.header.size === "number" ? entry.header.size : entry.getData().length,
+      size: entry.header && typeof entry.header.size === "number"
+        ? entry.header.size
+        : (entry.header && typeof entry.header.compressedSize === "number" ? entry.header.compressedSize : 0),
       sizeUnit: "bytes",
       path: entry.entryName
     }));
 }
 
 function parseArtifactArchive(buffer) {
-  const zip = new AdmZip(Buffer.from(buffer));
+  const zip = new AdmZip(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer));
   const entries = zip.getEntries();
   const iflwEntry = entries.find((entry) => /src\/main\/resources\/scenarioflows\/integrationflow\/.+\.iflw$/i.test(entry.entryName));
 

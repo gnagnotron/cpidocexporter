@@ -1,3 +1,6 @@
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const express = require("express");
 
 const { fetchAllIflows } = require("../api/sapClient");
@@ -25,6 +28,9 @@ function cleanupOldJobs() {
   const threshold = Date.now() - JOB_TTL_MS;
   for (const [jobId, job] of jobs.entries()) {
     if ((job.updatedAt || job.createdAt || 0) < threshold) {
+      if (job.reportPath && fs.existsSync(job.reportPath)) {
+        fs.unlinkSync(job.reportPath);
+      }
       jobs.delete(jobId);
     }
   }
@@ -41,7 +47,7 @@ function createGenerationJob() {
     stage: "Queued",
     percentage: 0,
     reportName: "",
-    html: "",
+    reportPath: "",
     error: "",
     createdAt: now,
     updatedAt: now
@@ -62,7 +68,7 @@ function startGenerationJob(job, serviceKey) {
       const config = createConfigFromServiceKeyObject(serviceKey);
       const metrics = createMetrics();
 
-      const iflows = await fetchAllIflows(config, metrics, (progress) => {
+      let iflows = await fetchAllIflows(config, metrics, (progress) => {
         job.percentage = clampPercentage(progress && progress.percentage);
         job.stage = String((progress && progress.stage) || "Generating");
         job.updatedAt = Date.now();
@@ -71,7 +77,8 @@ function startGenerationJob(job, serviceKey) {
       job.percentage = 95;
       job.stage = "Building canonical model";
       job.updatedAt = Date.now();
-      const model = buildCanonicalModel(iflows, finalizeMetrics(metrics));
+      let model = buildCanonicalModel(iflows, finalizeMetrics(metrics));
+      iflows = null;
 
       const validationErrors = validateModel(model);
       if (validationErrors.length > 0) {
@@ -82,8 +89,12 @@ function startGenerationJob(job, serviceKey) {
       job.stage = "Rendering HTML";
       job.updatedAt = Date.now();
       const html = renderHtml(model);
+      model = null;
 
-      job.html = html;
+      const reportPath = path.join(os.tmpdir(), `${job.id}.html`);
+      fs.writeFileSync(reportPath, html, "utf8");
+
+      job.reportPath = reportPath;
       job.reportName = `sap-cpi-docs-${new Date().toISOString().slice(0, 10)}.html`;
       job.percentage = 100;
       job.stage = "Completed";
@@ -477,8 +488,13 @@ app.get("/api/generate/download/:jobId", (req, res) => {
     return;
   }
 
-  if (job.status !== "completed" || !job.html) {
+  if (job.status !== "completed" || !job.reportPath) {
     res.status(409).json({ error: "Report is not ready yet" });
+    return;
+  }
+
+  if (!fs.existsSync(job.reportPath)) {
+    res.status(410).json({ error: "Report file expired or unavailable" });
     return;
   }
 
@@ -487,7 +503,11 @@ app.get("/api/generate/download/:jobId", (req, res) => {
     .setHeader("Content-Type", "text/html; charset=utf-8")
     .setHeader("Content-Disposition", `attachment; filename="${job.reportName || "sap-cpi-docs.html"}"`)
     .setHeader("x-report-name", job.reportName || "sap-cpi-docs.html")
-    .send(job.html);
+    .sendFile(job.reportPath, (error) => {
+      if (error) {
+        logger.error("Failed to send generated report", { jobId: job.id, error: error.message });
+      }
+    });
 });
 
 app.post("/api/generate", async (req, res) => {
@@ -496,14 +516,16 @@ app.post("/api/generate", async (req, res) => {
     const config = createConfigFromServiceKeyObject(serviceKey);
 
     const metrics = createMetrics();
-    const iflows = await fetchAllIflows(config, metrics);
-    const model = buildCanonicalModel(iflows, finalizeMetrics(metrics));
+    let iflows = await fetchAllIflows(config, metrics);
+    let model = buildCanonicalModel(iflows, finalizeMetrics(metrics));
+    iflows = null;
     const validationErrors = validateModel(model);
     if (validationErrors.length > 0) {
       throw new Error(`Quality gate failed: ${validationErrors.join("; ")}`);
     }
 
     const html = renderHtml(model);
+    model = null;
     const reportName = `sap-cpi-docs-${new Date().toISOString().slice(0, 10)}.html`;
 
     res
